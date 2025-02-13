@@ -1,0 +1,12 @@
+name: deformgs_reloaded
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python
+  - pytorch
+  - numpy
+  - pip
+  - pip:
+      - torch-scatter
+      - torch-spline-conv
