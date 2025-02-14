@@ -3,7 +3,8 @@ import argparse
 
 def train(args):
     print(f"Training 3D reconstruction model for {args.epochs} epochs with Gaussian Splatting...")
-    # TODO: Add model loading, dataset preparation, and training loop
+    for iteration in range(args.epochs):
+        
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
