@@ -1,9 +1,0 @@
-name: deformgs_reloaded
-channels:
-  - conda-forge
-  - defaults
-dependencies:
-  - python=3.12
-  - pytorch
-  - numpy
-  - pip

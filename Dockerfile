@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.0.0-devel-ubuntu22.04 
+FROM nvidia/cuda:11.7.1-devel-ubuntu22.04 
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive \
     apt-get install -y \
@@ -14,18 +14,4 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive \
     libglib2.0-0 \
     libsm6 \
     libxrender1 \
-    libxext6 \
-    wget
-
-RUN wget https://repo.anaconda.com/archive/Anaconda3-2024.10-1-Linux-x86_64.sh -O /tmp/conda.sh \
-&& bash /tmp/conda.sh -b -p /opt/conda \
-&& rm -rf /tmp/conda.sh
-
-# Set environment variables for Conda
-ENV PATH=/opt/conda/bin:$PATH
-
-# Set working directory inside container
-WORKDIR /app
-
-# Command to start when container is run (bash shell)
-CMD ["/bin/bash"]
+    libxext6
