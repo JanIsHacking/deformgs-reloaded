@@ -1,0 +1,1 @@
+- A camera holds recording --> nest recording inside the camera class

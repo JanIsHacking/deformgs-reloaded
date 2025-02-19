@@ -1,5 +1,5 @@
 import math
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import os
 import json
 
@@ -23,10 +23,30 @@ def getProjectionMatrixPanopto(f_x,f_y,c_x,c_y,width,height,znear,zfar):
                                 [0.0, 0.0, 1.0, 0.0]]).float().unsqueeze(0).transpose(1, 2).cuda()
     return opengl_proj
 
+class RecordingFrame:
+    def __init__(self, file_path: str, time: float):
+        self.file_path = file_path
+        self.time = time
+
+    def load(self):
+        # Discarding the alpha channel
+        image = np.array(Image.open(self.file_path).convert("RGB"))
+        image_tensor = (torch.from_numpy(image).float() / 255.0).permute(2, 0, 1)
+        return image_tensor
+
+
+class StaticCameraRecording:
+    def __init__(self, images: List[RecordingFrame]):
+        self.images = images
+    
+    def get_initial_image(self):
+        return self.images[0]
+
 
 class StaticCamera(nn.Module):
-    def __init__(self, camera_id: int, rotation: torch.Tensor, translation: torch.Tensor, focal_length_x: float, focal_length_y: float, image_width: int, image_height: int, cx: float, cy: float, angle_x: float, angle_y: float):
+    def __init__(self, camera_id: int, recordings: List[StaticCameraRecording], rotation: torch.Tensor, translation: torch.Tensor, focal_length_x: float, focal_length_y: float, image_width: int, image_height: int, cx: float, cy: float, angle_x: float, angle_y: float):
         self.camera_id = camera_id
+        self.recordings = recordings
         self.rotation = rotation
         self.translation = translation
         self.focal_length_x = focal_length_x
@@ -57,34 +77,15 @@ class StaticCamera(nn.Module):
         self.projection_matrix = getProjectionMatrixPanopto(f_x=focal_length_x,f_y=focal_length_y,c_x=cx,c_y=cy,width=image_width,height=image_height,znear=znear,zfar=zfar)
         self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix)).squeeze(0).cuda()
 
-class ImageFrame:
-    def __init__(self, file_path: str, time: float):
-        self.file_path = file_path
-        self.time = time
-
-    def load(self):
-        # Discarding the alpha channel
-        image = np.array(Image.open(self.file_path).convert("RGB"))
-        image_tensor = (torch.from_numpy(image).float() / 255.0).permute(2, 0, 1)
-        return image_tensor
-
-
-class StaticCameraRecording:
-    def __init__(self, camera: StaticCamera, images: List[ImageFrame]):
-        self.camera = camera
-        self.images = images
-
-    def __repr__(self) -> str:
-        return f"CameraRecording(camera_id={self.camera.camera_id}, images={len(self.images)})"
+    def get_initial_recording(self):
+        return self.recordings[0]
     
-    def get_initial_image(self):
-        return self.images[0]
-    
-def _load_static_camera_recordings(data_dir: str, transforms_file: str) -> List[StaticCameraRecording]:
+def _load_cameras(data_dir: str, transforms_file: str) -> List[StaticCamera]:
     with open(os.path.join(data_dir, transforms_file), "r") as f:
         transforms = json.load(f)
-    recordings: Dict[int, List[ImageFrame]] = {}
-    
+
+    recordings: Dict[int, List[RecordingFrame]] = {}
+    camera_positions: Dict[int, Tuple[torch.Tensor, torch.Tensor]] = {}
     for frame in transforms["frames"]:
         file_path = os.path.join(data_dir, frame["file_path"])
         time = frame["time"]
@@ -93,17 +94,19 @@ def _load_static_camera_recordings(data_dir: str, transforms_file: str) -> List[
         transformation_matrix = torch.tensor(frame["transform_matrix"])
         rotation = transformation_matrix[:3, :3]
         translation = transformation_matrix[:3, 3]
+        if camera_id not in camera_positions: # Assuming static cameras, so we only take the first transformation matrix
+            camera_positions[camera_id] = (rotation, translation)
         
         if camera_id not in recordings:
             recordings[camera_id] = []
         
-        recordings[camera_id].append(ImageFrame(file_path, time))
+        recordings[camera_id].append(RecordingFrame(file_path, time))
     
-    camera_recordings: List[StaticCameraRecording] = []
-
-    for camera_id, images in recordings.items():
+    cameras: List[StaticCamera] = []
+    for camera_id, (rotation, translation) in camera_positions.items():
         camera = StaticCamera(
             camera_id=camera_id,
+            recordings=[StaticCameraRecording(recordings[camera_id])],
             rotation=rotation,
             translation=translation,
             focal_length_x=transforms["fl_x"],
@@ -115,16 +118,15 @@ def _load_static_camera_recordings(data_dir: str, transforms_file: str) -> List[
             angle_x=transforms["camera_angle_x"],
             angle_y=transforms["camera_angle_y"]
         )
-        camera_recordings.append(StaticCameraRecording(camera, images))
-    
-    return camera_recordings
+        cameras.append(camera)
+    return cameras
 
     
-def load_test_static_camera_recordings() -> List[StaticCameraRecording]:
+def load_test_cameras() -> List[StaticCamera]:
     test_data_dir = os.path.join("data", "synthetic", "scene_1")
-    return _load_static_camera_recordings(test_data_dir, "transforms_test.json")
+    return _load_cameras(test_data_dir, "transforms_test.json")
 
-def load_training_static_camera_recordings() -> List[StaticCameraRecording]:
+def load_training_cameras() -> List[StaticCamera]:
     train_data_dir = os.path.join("data", "synthetic", "scene_1")
-    return _load_static_camera_recordings(train_data_dir, "transforms_train.json")
+    return _load_cameras(train_data_dir, "transforms_train.json")
 
